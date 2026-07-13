@@ -440,7 +440,89 @@ export class EmotionEngine {
 
   private static ANALYSIS_SYSTEM_PROMPT = "你是一个情绪数值调节器，只输出 JSON，不添加任何解释。";
 
-  private buildAnalysisPrompt(user: EmotionData, self: SelfData, history: string, latestMsg: string, turn: number): string {
+  buildAnalysisPrompt(uid: string, message: string, history: string = ""): { prompt: string; user: EmotionData; self: SelfData; turn: number } {
+    const user = this.getUser(uid);
+    const self = this.getSelf();
+    const turn = user.last_interaction === 0 ? 1 : user.turn_count || 1;
+
+    const historySnippet = history.length > 2000 ? history.slice(-2000) : history;
+    const prompt = EmotionEngine.ANALYSIS_SYSTEM_PROMPT + "\n\n" +
+      `当前状态：
+- 对话轮次：第 ${turn} 轮
+- 好感度：${user.affection.toFixed(1)}/100
+- 对他基线：原他力比多 ${user.base_libido_other.toFixed(1)}，原他攻击性 ${user.base_aggression_other.toFixed(1)}
+- 对他当前：他力比多 ${user.current_libido_other.toFixed(1)}，他攻击性 ${user.current_aggression_other.toFixed(1)}
+- 对己基线：原自力比多 ${self.base_libido_self.toFixed(1)}，原自攻击性 ${self.base_aggression_self.toFixed(1)}
+- 对己当前：自力比多 ${self.current_libido_self.toFixed(1)}，自攻击性 ${self.current_aggression_self.toFixed(1)}
+
+最近对话历史：
+${historySnippet}
+
+用户最新消息：${message}`;
+
+    return { prompt, user, self, turn };
+  }
+
+  applyDeltas(uid: string, deltas: Deltas, turn?: number): Record<string, unknown> {
+    this.applyDecay();
+
+    const user = this.getUser(uid);
+    const now = Date.now();
+    const t = turn ?? (user.last_interaction === 0 ? 1 : Math.max(1, user.turn_count));
+
+    const isFirst = user.last_interaction === 0;
+
+    if (isFirst) {
+      user.last_interaction = now;
+      user.turn_count = 1;
+      this.userData[uid] = user;
+      this.saveUserDataSync();
+      return {
+        status: "first_interaction",
+        message: "初次互动，保持平淡中性",
+        ...this.buildPanel(uid),
+      };
+    }
+
+    let clamped = EmotionEngine.clampDeltas(deltas, t);
+    clamped = EmotionEngine.ensureNonZero(clamped, user);
+
+    const sens = this.config.sensitivity * clamped.intensity;
+
+    user.current_libido_other = Math.max(0, Math.min(50, user.current_libido_other + clamped.libido_other_delta * sens));
+    user.current_aggression_other = Math.max(0, Math.min(50, user.current_aggression_other + clamped.aggression_other_delta * sens));
+    user.affection = Math.max(0, Math.min(100, user.affection + clamped.affection_delta * sens));
+
+    const baseCoef = t <= 10 ? 1.0 : 0.2;
+    user.base_libido_other = Math.max(0, Math.min(50, user.base_libido_other + clamped.base_libido_other_delta * baseCoef));
+    user.base_aggression_other = Math.max(0, Math.min(50, user.base_aggression_other + clamped.base_aggression_other_delta * baseCoef));
+
+    user.turn_count = t + 1;
+    user.last_interaction = now;
+    user.last_update = now;
+    user.idle_triggered = false;
+    this.userData[uid] = user;
+    this.saveUserDataSync();
+
+    this.selfData.current_libido_self = Math.max(0, Math.min(50, this.selfData.current_libido_self + clamped.libido_self_delta * sens));
+    this.selfData.current_aggression_self = Math.max(0, Math.min(50, this.selfData.current_aggression_self + clamped.aggression_self_delta * sens));
+    this.selfData.base_libido_self = Math.max(0, Math.min(50, this.selfData.base_libido_self + clamped.base_libido_self_delta * 0.2));
+    this.selfData.base_aggression_self = Math.max(0, Math.min(50, this.selfData.base_aggression_self + clamped.base_aggression_self_delta * 0.2));
+    this.selfData.last_update = now;
+    this.saveSelfDataSync();
+
+    const round4 = (v: number) => Math.round(v * 10000) / 10000;
+    return {
+      status: "updated",
+      deltas: Object.fromEntries(Object.entries(clamped).map(([k, v]) => [k, round4(v)])),
+      sensitivity: round4(sens),
+      ...this.buildPanel(uid),
+    };
+  }
+
+  // ==================== LLM 调用（可选 — 仅在配置了 API Key 时使用） ====================
+
+  private buildAnalysisPrompt_inner(user: EmotionData, self: SelfData, history: string, latestMsg: string, turn: number): string {
     const historySnippet = history.length > 2000 ? history.slice(-2000) : history;
     return `你是潜意识的数值调节器。根据用户最新消息和对话历史，分析对机器人情绪的影响。
 
@@ -615,7 +697,7 @@ ${historySnippet}
 
     const turn = user.turn_count || 1;
     let deltas = await this.callUnconsciousLLM(
-      this.buildAnalysisPrompt(user, self, history, message, turn),
+      this.buildAnalysisPrompt_inner(user, self, history, message, turn),
     );
     deltas = EmotionEngine.clampDeltas(deltas, turn);
     deltas = EmotionEngine.ensureNonZero(deltas, user);

@@ -1,0 +1,45 @@
+{
+  "name": "emotion-mcp",
+  "version": "1.0.0",
+  "description": "弗洛伊德双驱情绪管理 MCP Server — 为 AI 角色扮演提供动态情绪模拟",
+  "license": "AGPL-3.0",
+  "author": "middcom, yaoxiaolinglong",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yaoxiaolinglong/emotion-mcp"
+  },
+  "type": "module",
+  "bin": {
+    "emotion-mcp": "./dist/server.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "emotion",
+    "freud",
+    "ai-companion",
+    "roleplay",
+    "librechat"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "emotion-mcp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "弗洛伊德双驱情绪管理 MCP Server — 为 AI 角色扮演提供动态情绪模拟",
   "license": "AGPL-3.0",
   "author": "middcom, yaoxiaolinglong",

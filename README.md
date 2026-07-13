@@ -13,9 +13,35 @@
 npx -y emotion-mcp
 ```
 
-## LibreChat 集成
+## 集成方式
 
-在 `librechat.yaml` 中添加：
+### 零配置（推荐） — Agent 自主分析
+
+```yaml
+mcpServers:
+  emotion:
+    type: stdio
+    command: npx
+    args:
+      - -y
+      - emotion-mcp
+    timeout: 60000
+```
+
+**无需任何环境变量！** Agent 通过两步模式完成情绪分析：
+
+```
+用户发言
+  → emotion_get_analysis_prompt(user_id, message)  # 获取分析任务
+  → Agent 自己分析 → 输出 JSON
+  → emotion_apply_deltas(user_id, deltas)           # 提交结果，数值更新
+  → emotion_get_emotion_prompt(user_id)             # 获取情绪文本
+  → 注入 system prompt → 生成回复
+```
+
+### 后台 LLM 模式 — 独立分析
+
+如果配置了 `EMOTION_LLM_API_KEY`，可用 `emotion_analyze` 一步完成：
 
 ```yaml
 mcpServers:
@@ -27,11 +53,8 @@ mcpServers:
       - emotion-mcp
     env:
       EMOTION_LLM_API_KEY: sk-your-key-here
-      EMOTION_LLM_MODEL: gpt-3.5-turbo
     timeout: 60000
 ```
-
-然后在角色扮演 Agent 的 system prompt 末尾加入「情绪驱动规则」，Agent 会在对话中自动调用情绪工具。
 
 ## 环境变量
 
